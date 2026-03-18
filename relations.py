@@ -22,6 +22,26 @@ def generate_aggregation(field):
     if field.get('optional', False):
         aggregation_pipeline.append({"$match": {field['field']: {"$ne": None}}})
 
+    # Handle is_string: convert string field to ObjectId for lookup
+    lookup_field = field['field']
+    if field.get('is_stupid_string', False):
+        converted_field = f"_converted_{field['field']}"
+        aggregation_pipeline.append({
+            "$addFields": {
+                converted_field: {
+                    "$cond": {
+                        "if": {"$and": [
+                            {"$ne": [f"${field['field']}", None]},
+                            {"$eq": [{"$type": f"${field['field']}"}, "string"]}
+                        ]},
+                        "then": {"$toObjectId": f"${field['field']}"},
+                        "else": f"${field['field']}"
+                    }
+                }
+            }
+        })
+        lookup_field = converted_field
+
     # Handle cases where there's a discriminator (e.g., boardElementType)
     if 'discriminator' in field:
         cases = field['cases']
@@ -35,7 +55,7 @@ def generate_aggregation(field):
                         {
                             "$lookup": {
                                 "from": case['references_collection'],
-                                "localField": field['field'],
+                                "localField": lookup_field,
                                 "foreignField": "_id",
                                 "as": "reference_check"
                             }
@@ -74,7 +94,7 @@ def generate_aggregation(field):
         lookup_stage = {
             "$lookup": {
                 "from": field['references_collection'],
-                "localField": field['field'],
+                "localField": lookup_field,
                 "foreignField": field['references_field'],
                 "as": "reference_check"
             }
