@@ -111,7 +111,7 @@ def validate_referential_integrity(db, config, target_collection=None):
                 for case in field['cases']:
                     print(f"    Case: {case['value']} -> {case['references_collection']}._id")
             else:
-                print(f"  Checking field: {collection_name}.{field['field']} -> {field['references_collection']}._id")
+                print(f"  Checking field: {collection_name}.{field['field']} -> {field['references_collection']}.{field['references_field']}")
 
             aggregation_pipeline = generate_aggregation(field)
             result = list(collection.aggregate(aggregation_pipeline))
