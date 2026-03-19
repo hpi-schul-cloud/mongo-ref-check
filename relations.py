@@ -60,14 +60,14 @@ def generate_aggregation(field):
                                 "as": "reference_check"
                             }
                         },
-                        {"$match": {"reference_check": {"$size": 0}}}
+                        {"$match": {"reference_check": {"$size": 0}}},
+                        {"$count": "count"}
                     ]
                     for case in cases
                 },
                 "unknown": [
-                    {
-                        "$match": {field['discriminator']: {"$nin": known_types}}
-                    }
+                    {"$match": {field['discriminator']: {"$nin": known_types}}},
+                    {"$count": "count"}
                 ]
             }
         }
@@ -79,10 +79,10 @@ def generate_aggregation(field):
                 "missing_references": {
                     "$add": [
                         *[
-                            {"$size": f"${case['value']}"}
+                            {"$ifNull": [{"$arrayElemAt": [f"${case['value']}.count", 0]}, 0]}
                             for case in cases
                         ],
-                        {"$size": "$unknown"}
+                        {"$ifNull": [{"$arrayElemAt": ["$unknown.count", 0]}, 0]}
                     ]
                 }
             }

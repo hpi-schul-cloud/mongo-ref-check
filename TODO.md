@@ -11,11 +11,6 @@ classes.userIds optional??? based on code it should be but ... https://github.co
 files.permissions [] .. too complicated
 team.filepermissions
 team.userids
-
-
-nexboardcontents raus damit
-
-school-system-options prüfen auf nbc
-
+groups.items
 
 videoconferences.target not an object id ...
