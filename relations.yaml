@@ -28,6 +28,19 @@ relations:
           - value: columnboard
             references_collection: boardnodes
 
+# unknown gets too big as some are root elemnts some are not
+#  - collection: boardnodes
+#    fields:
+#      - field: context
+#        discriminator: contextType
+#        cases:
+#          - value: course
+#            references_collection: courses
+#          - value: room
+#            references_collection: rooms
+#          - value: user
+#            references_collection: users
+
   - collection: classes
     fields:
       - field: schoolId
@@ -43,11 +56,32 @@ relations:
         references_collection: years
         references_field: _id
         optional: true
+
+  - collection: consentversions
+    fields:
+      - field: schoolId
+        references_collection: schools
+        references_field: _id
+      - field: consentDataId
+        references_collection: base64files
+        references_field: _id
+
   - collection: context-external-tools
     fields:
       - field: schoolTool
         references_collection: school-external-tools
         references_field: _id
+      - field: contextId
+        discriminator: contextType
+        cases:
+          - value: course
+            references_collection: courses
+          - value: boardElement
+            references_collection: boardnodes
+          - value: mediaBoard
+            references_collection: boardnodes
+
+
   - collection: coursegroups
     fields:
       - field: schoolId
@@ -102,11 +136,62 @@ relations:
       - field: toolId
         references_collection: external-tools
         references_field: _id
+
+  - collection: "filerecords"
+    fields:
+      - field: "parent"
+        discriminator: "parentType"
+        cases:
+          - value: "boardnodes"
+            references_collection: "boardnodes"
+          - value: "gradings"
+            references_collection: "submissions"
+          - value: "lessons"
+            references_collection: "lessons"
+          - value: "submissions"
+            references_collection: "submissions"
+          - value: "tasks"
+            references_collection: "homeworks"
+
+
   - collection: files
     fields:
       - field: creator
         references_collection: users
         references_field: _id
+      - field: "owner"
+        discriminator: "refOwnerModel"
+        cases:
+          - value: "course"
+            references_collection: "courses"
+          - value: "teams"
+            references_collection: "teams"
+          - value: "user"
+            references_collection: "users"
+
+
+  - collection: groups
+    fields:
+      - field: organization
+        references_collection: schools
+        references_field: _id
+#      - field: users  {users, role}
+
+  - collection: h5p-editor-content
+    fields:
+      - field: school
+        references_collection: schools
+        references_field: _id
+      - field: "parent"
+        discriminator: "parentType"
+        cases:
+          - value: "board-element"
+            references_collection: "boardnodes"
+      - field: creator
+        references_collection: users
+        references_field: _id
+
+
   - collection: homeworks
     fields:
       - field: schoolId
@@ -142,32 +227,127 @@ relations:
       - field: _id
         references_collection: homeworks
         references_field: lessonId
+
+  - collection: lti-deep-link-token
+    fields:
+      - field: user
+        references_collection: users
+        references_field: _id
+
+
   - collection: news
     fields:
       - field: schoolId
         references_collection: schools
         references_field: _id
+      - field: target
+        discriminator: targetModel
+        cases:
+          - value: schools
+            references_collection: schools
+          - value: teams
+            references_collection: teams
+
+  - collection: oauth-session-token
+    fields:
+      - field: user
+        references_collection: users
+        references_field: _id
+      - field: system
+        references_collection: systems
+        references_field: _id
+
   - collection: passwordrecoveries
     fields:
       - field: account
         references_collection: accounts
         references_field: _id
-  - collection: rocketchatchannels
+
+  - collection: registrationpins
     fields:
-      - field: teamId
-        references_collection: teams
-        references_field: _id
-  - collection: rocketchatusers
-    fields:
-      - field: userId
+      - field: email
         references_collection: users
+        references_field: email
+      - field: email
+        references_collection: accounts
+        references_field: username
+
+# check with north star
+  - collection: registrations
+    fields:
+      - field: email
+        references_collection: users
+        references_field: email
+      - field: email
+        references_collection: accounts
+        references_field: username
+      - field: roomIds
+        references_collection: rooms
         references_field: _id
+
   - collection: roles
     fields:
       - field: roles
         references_collection: roles
         references_field: _id
         is_array: true
+
+# stupid fields are strings not objectids argh!
+  - collection: room-invitation-links
+    fields:
+      - field: creatorUserId
+        references_collection: users
+        references_field: _id
+        is_stupid_string: true
+      - field: creatorSchoolId
+        references_collection: schools
+        references_field: _id
+        is_stupid_string: true
+      - field: roomId
+        references_collection: rooms
+        references_field: _id
+        is_stupid_string: true
+
+
+  - collection: room-memberships
+    fields:
+      - field: room
+        references_collection: rooms
+        references_field: _id
+      - field: userGroup
+        references_collection: groups
+        references_field: _id
+      - field: school
+        references_collection: schools
+        references_field: _id
+
+
+  - collection: roomarrangements
+    fields:
+      - field: user
+        references_collection: users
+        references_field: _id
+      - field: items
+        references_collection: rooms
+        references_field: _id
+        is_array: true
+
+  - collection: roomcontents
+    fields:
+      - field: room
+        references_collection: rooms
+        references_field: _id
+      #- field: items
+#    items: [
+#      { id: '695bf005c9372e89b2142e25', type: 'board' },
+#      { id: '695bf04f64bb2aa70b2e4f7d', type: 'board' }
+#    ]
+  - collection: rooms
+    fields:
+      - field: school
+        references_collection: schools
+        references_field: _id
+
   - collection: school-external-tools
     fields:
       - field: school
@@ -176,6 +356,16 @@ relations:
       - field: tool
         references_collection: external-tools
         references_field: _id
+
+  - collection: school-licenses
+    fields:
+      - field: school
+        references_collection: schools
+        references_field: _id
+      - field: mediaSource
+        references_collection: media-sources
+        references_field: _id
+
   - collection: school-system-options
     fields:
       - field: school
@@ -214,6 +404,10 @@ relations:
             references_collection: lessons
           - value: tasks
             references_collection: homeworks
+          - value: room
+            references_collection: room
+          - value: card
+            references_collection: card
       - field: context
         references_collection: schools
         references_field: _id
@@ -249,6 +443,19 @@ relations:
         references_collection: schools
         references_field: _id
         is_array: true
+
+  - collection: user-licenses
+    fields:
+      - field: mediaSource
+        references_collection: media-sources
+        references_field: _id
+
+  - collection: user-login-migrations
+    fields:
+      - field: school
+        references_collection: schools
+        references_field: _id
+
   - collection: users
     fields:
       - field: schoolId
@@ -261,3 +468,17 @@ relations:
       - field: _id
         references_collection: accounts
         references_field: userId
+
+
+#in case of events, those are not referenced by mongodb those are in postgres
+#  - collection: videoconferences
+#    fields:
+#      - field: target
+#        discriminator: targetModel
+#        cases:
+#          - value: course
+#            references_collection: courses
+#          - value: events
+#            references_collection: xxx
+#          - value: video-conference-elements
+#            references_collection: boardnodes
