@@ -19,23 +19,29 @@ def generate_aggregation(field):
     if field.get('is_array', False):
         aggregation_pipeline.append({"$unwind": f"${field['field']}"})
 
+    # Determine the actual field to look up
+    lookup_field = field['field']
+    if 'sub_field' in field:
+        lookup_field = f"{lookup_field}.{field['sub_field']}"
+
     if field.get('optional', False):
-        aggregation_pipeline.append({"$match": {field['field']: {"$ne": None}}})
+        aggregation_pipeline.append({"$match": {lookup_field: {"$ne": None}}})
 
     # Handle is_string: convert string field to ObjectId for lookup
-    lookup_field = field['field']
     if field.get('is_stupid_string', False):
-        converted_field = f"_converted_{field['field']}"
+        # Use a safe field name for conversion, avoiding dots in the new field name
+        safe_lookup_name = lookup_field.replace('.', '_')
+        converted_field = f"_converted_{safe_lookup_name}"
         aggregation_pipeline.append({
             "$addFields": {
                 converted_field: {
                     "$cond": {
                         "if": {"$and": [
-                            {"$ne": [f"${field['field']}", None]},
-                            {"$eq": [{"$type": f"${field['field']}"}, "string"]}
+                            {"$ne": [f"${lookup_field}", None]},
+                            {"$eq": [{"$type": f"${lookup_field}"}, "string"]}
                         ]},
-                        "then": {"$toObjectId": f"${field['field']}"},
-                        "else": f"${field['field']}"
+                        "then": {"$toObjectId": f"${lookup_field}"},
+                        "else": f"${lookup_field}"
                     }
                 }
             }
@@ -124,14 +130,18 @@ def validate_referential_integrity(db, config, target_collection=None):
         print(f"Processing collection: {collection_name}")
 
         for field in relation['fields']:
+            field_path = field['field']
+            if 'sub_field' in field:
+                field_path = f"{field_path}.{field['sub_field']}"
+
             if 'discriminator' in field:
                 print(
-                    f"  Checking field: {collection_name}.{field['field']} with discriminator {field['discriminator']}")
+                    f"  Checking field: {collection_name}.{field_path} with discriminator {field['discriminator']}")
 
                 for case in field['cases']:
                     print(f"    Case: {case['value']} -> {case['references_collection']}._id")
             else:
-                print(f"  Checking field: {collection_name}.{field['field']} -> {field['references_collection']}.{field['references_field']}")
+                print(f"  Checking field: {collection_name}.{field_path} -> {field['references_collection']}.{field['references_field']}")
 
             aggregation_pipeline = generate_aggregation(field)
             result = list(collection.aggregate(aggregation_pipeline))
@@ -139,10 +149,10 @@ def validate_referential_integrity(db, config, target_collection=None):
             if result:
                 count = result[0].get('missing_references', 0)
                 print(
-                    f"    Found {count} dereferenced documents in field '{field['field']}' of collection '{collection_name}'")
+                    f"    Found {count} dereferenced documents in field '{field_path}' of collection '{collection_name}'")
             else:
                 print(
-                    f"    No dereferenced documents found in field '{field['field']}' of collection '{collection_name}'.")
+                    f"    No dereferenced documents found in field '{field_path}' of collection '{collection_name}'.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3 or len(sys.argv) > 4:

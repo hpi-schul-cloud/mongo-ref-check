@@ -175,7 +175,16 @@ relations:
       - field: organization
         references_collection: schools
         references_field: _id
-#      - field: users  {users, role}
+      - field: users
+        is_array: true
+        sub_field: user
+        references_collection: users
+        references_field: _id
+      - field: users
+        is_array: true
+        sub_field: role
+        references_collection: roles
+        references_field: _id
 
   - collection: h5p-editor-content
     fields:
