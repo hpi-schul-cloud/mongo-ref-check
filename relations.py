@@ -82,6 +82,11 @@ def generate_aggregation(field):
 
         project_stage = {
             "$project": {
+                **{
+                    f"count_{case['value']}": {"$ifNull": [{"$arrayElemAt": [f"${case['value']}.count", 0]}, 0]}
+                    for case in cases
+                },
+                "count_unknown": {"$ifNull": [{"$arrayElemAt": ["$unknown.count", 0]}, 0]},
                 "missing_references": {
                     "$add": [
                         *[
@@ -148,6 +153,13 @@ def validate_referential_integrity(db, config, target_collection=None):
 
             if result:
                 count = result[0].get('missing_references', 0)
+                if 'discriminator' in field:
+                    for case in field['cases']:
+                        case_count = result[0].get(f"count_{case['value']}", 0)
+                        print(f"      {case['value']}: {case_count}")
+                    unknown_count = result[0].get('count_unknown', 0)
+                    if unknown_count > 0:
+                        print(f"      unknown: {unknown_count}")
                 print(
                     f"    Found {count} dereferenced documents in field '{field_path}' of collection '{collection_name}'")
             else:
