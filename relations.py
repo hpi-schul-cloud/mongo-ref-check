@@ -14,6 +14,156 @@ def get_db_connection(mongo_url):
     return client
 
 
+def generate_find_orphans_query(collection_name, field):
+    """Generate an aggregation pipeline to find orphaned document IDs (not just count)."""
+    pipeline = []
+
+    lookup_field = field['field']
+    if 'sub_field' in field:
+        lookup_field = f"{lookup_field}.{field['sub_field']}"
+
+    if field.get('is_array', False):
+        pipeline.append({"$unwind": f"${field['field']}"})
+
+    if field.get('optional', False):
+        pipeline.append({"$match": {lookup_field: {"$ne": None}}})
+
+    if field.get('is_stupid_string', False):
+        safe_lookup_name = lookup_field.replace('.', '_')
+        converted_field = f"_converted_{safe_lookup_name}"
+        pipeline.append({
+            "$addFields": {
+                converted_field: {
+                    "$cond": {
+                        "if": {"$and": [
+                            {"$ne": [f"${lookup_field}", None]},
+                            {"$eq": [{"$type": f"${lookup_field}"}, "string"]}
+                        ]},
+                        "then": {"$toObjectId": f"${lookup_field}"},
+                        "else": f"${lookup_field}"
+                    }
+                }
+            }
+        })
+        lookup_field = converted_field
+
+    if 'discriminator' in field:
+        # For discriminator fields, generate separate queries per case
+        queries = {}
+        for case in field['cases']:
+            case_pipeline = pipeline.copy()
+            case_pipeline.extend([
+                {"$match": {field['discriminator']: case['value']}},
+                {
+                    "$lookup": {
+                        "from": case['references_collection'],
+                        "localField": lookup_field,
+                        "foreignField": "_id",
+                        "as": "reference_check"
+                    }
+                },
+                {"$match": {"reference_check": {"$size": 0}}},
+                {"$project": {"_id": 1}}
+            ])
+            queries[case['value']] = case_pipeline
+        return queries
+    else:
+        pipeline.extend([
+            {
+                "$lookup": {
+                    "from": field['references_collection'],
+                    "localField": lookup_field,
+                    "foreignField": field['references_field'],
+                    "as": "reference_check"
+                }
+            },
+            {"$match": {"reference_check": {"$size": 0}}},
+            {"$project": {"_id": 1}}
+        ])
+        return pipeline
+
+
+def generate_cleanup_query(collection_name, field):
+    """Generate a cleanup query/strategy for orphaned documents."""
+    cleanup = {}
+
+    lookup_field = field['field']
+    if 'sub_field' in field:
+        lookup_field = f"{lookup_field}.{field['sub_field']}"
+
+    if 'discriminator' in field:
+        cleanup['strategy'] = 'per_case'
+        cleanup['cases'] = {}
+        for case in field['cases']:
+            # For each case, we can delete documents or unset the field
+            cleanup['cases'][case['value']] = {
+                'delete': f'db["{collection_name}"].deleteMany({{ _id: {{ $in: <orphan_ids> }} }})',
+                'unset_field': f'db["{collection_name}"].updateMany({{ _id: {{ $in: <orphan_ids> }} }}, {{ $unset: {{ "{lookup_field}": "" }} }})',
+                'note': f"Replace <orphan_ids> with IDs from the find query for case '{case['value']}'"
+            }
+    else:
+        cleanup['strategy'] = 'single'
+        cleanup['delete'] = f'db["{collection_name}"].deleteMany({{ _id: {{ $in: <orphan_ids> }} }})'
+        cleanup['unset_field'] = f'db["{collection_name}"].updateMany({{ _id: {{ $in: <orphan_ids> }} }}, {{ $unset: {{ "{lookup_field}": "" }} }})'
+        cleanup['note'] = "Replace <orphan_ids> with IDs from the find query"
+
+    return cleanup
+
+
+def print_queries_for_collection(config, collection_name):
+    """Print the find and cleanup queries for a specific collection."""
+    for relation in config['relations']:
+        if relation['collection'] != collection_name:
+            continue
+
+        print(f"\n{'='*60}")
+        print(f"QUERIES FOR COLLECTION: {collection_name}")
+        print(f"{'='*60}")
+
+        for field in relation['fields']:
+            field_path = field['field']
+            if 'sub_field' in field:
+                field_path = f"{field_path}.{field['sub_field']}"
+
+            print(f"\n--- Field: {field_path} ---")
+
+            # Find orphans query
+            find_query = generate_find_orphans_query(collection_name, field)
+
+            if 'discriminator' in field:
+                print(f"\nDiscriminator: {field['discriminator']}")
+                for case_value, case_pipeline in find_query.items():
+                    print(f"\n  Case '{case_value}':")
+                    print(f"  Find orphaned documents:")
+                    print(f'    db["{collection_name}"].aggregate(')
+                    print(f"      {json.dumps(case_pipeline, indent=6)}")
+                    print(f"    )")
+            else:
+                print(f"\nFind orphaned documents:")
+                print(f'  db["{collection_name}"].aggregate(')
+                print(f"    {json.dumps(find_query, indent=4)}")
+                print(f"  )")
+
+            # Cleanup queries
+            cleanup = generate_cleanup_query(collection_name, field)
+
+            print(f"\nCleanup options:")
+            if cleanup['strategy'] == 'per_case':
+                for case_value, case_cleanup in cleanup['cases'].items():
+                    print(f"\n  Case '{case_value}':")
+                    print(f"    Delete documents:  {case_cleanup['delete']}")
+                    print(f"    Or unset field:    {case_cleanup['unset_field']}")
+            else:
+                print(f"  Delete documents:  {cleanup['delete']}")
+                print(f"  Or unset field:    {cleanup['unset_field']}")
+                print(f"  Note: {cleanup['note']}")
+
+        return True
+
+    print(f"Collection '{collection_name}' not found in config.")
+    return False
+
+
 def generate_aggregation(field):
     aggregation_pipeline = []
 
@@ -191,19 +341,40 @@ def validate_referential_integrity(db, config, target_collection=None):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Validate referential integrity in MongoDB')
-    parser.add_argument('mongo_url', help='MongoDB connection URL')
-    parser.add_argument('config_file', help='Path to YAML config file')
-    parser.add_argument('collection', nargs='?', default=None, help='Optional: specific collection to check')
+    parser = argparse.ArgumentParser(
+        description='Validate referential integrity in MongoDB',
+        epilog='With --show-queries, mongo_url is not needed: python relations.py --show-queries config.yaml collection'
+    )
+    parser.add_argument('args', nargs='*', help='mongo_url config_file [collection] OR config_file collection (with --show-queries)')
     parser.add_argument('--json', action='store_true', help='Output results as JSON at the end')
+    parser.add_argument('--show-queries', action='store_true', help='Show aggregation and cleanup queries instead of running them (requires collection)')
 
     args = parser.parse_args()
 
-    config = load_config(args.config_file)
-    client = get_db_connection(args.mongo_url)
-    db = client.get_database()
+    if args.show_queries:
+        # --show-queries mode: expects config_file and collection only
+        if len(args.args) != 2:
+            print("Usage with --show-queries: python relations.py --show-queries <config_file> <collection>", file=sys.stderr)
+            sys.exit(1)
+        config_file, collection = args.args
+        config = load_config(config_file)
+        print_queries_for_collection(config, collection)
+    else:
+        # Normal mode: expects mongo_url, config_file, and optional collection
+        if len(args.args) < 2 or len(args.args) > 3:
+            print("Usage: python relations.py <mongo_url> <config_file> [collection]", file=sys.stderr)
+            print("       python relations.py --show-queries <config_file> <collection>", file=sys.stderr)
+            sys.exit(1)
 
-    results = validate_referential_integrity(db, config, args.collection)
+        mongo_url = args.args[0]
+        config_file = args.args[1]
+        collection = args.args[2] if len(args.args) == 3 else None
 
-    if args.json:
-        print(json.dumps(results, indent=2))
+        config = load_config(config_file)
+        client = get_db_connection(mongo_url)
+        db = client.get_database()
+
+        results = validate_referential_integrity(db, config, collection)
+
+        if args.json:
+            print(json.dumps(results, indent=2))
