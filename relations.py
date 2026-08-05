@@ -1,3 +1,4 @@
+import json
 import yaml
 import sys
 from pymongo import MongoClient
@@ -125,6 +126,8 @@ def generate_aggregation(field):
 
 
 def validate_referential_integrity(db, config, target_collection=None):
+    results = {}
+
     for relation in config['relations']:
         collection_name = relation['collection']
 
@@ -132,21 +135,30 @@ def validate_referential_integrity(db, config, target_collection=None):
             continue
 
         collection = db[collection_name]
-        print(f"Processing collection: {collection_name}")
+        print(f"Processing collection: {collection_name}", file=sys.stderr)
+
+        if collection_name not in results:
+            results[collection_name] = {"fields": {}}
 
         for field in relation['fields']:
             field_path = field['field']
             if 'sub_field' in field:
                 field_path = f"{field_path}.{field['sub_field']}"
 
-            if 'discriminator' in field:
-                print(
-                    f"  Checking field: {collection_name}.{field_path} with discriminator {field['discriminator']}")
+            field_result = {}
 
+            if 'discriminator' in field:
+                field_result["discriminator"] = field['discriminator']
+                field_result["cases"] = {}
+                print(f"  Checking field: {collection_name}.{field_path} with discriminator {field['discriminator']}", file=sys.stderr)
                 for case in field['cases']:
-                    print(f"    Case: {case['value']} -> {case['references_collection']}._id")
+                    field_result["cases"][case['value']] = {
+                        "references": f"{case['references_collection']}._id"
+                    }
+                    print(f"    Case: {case['value']} -> {case['references_collection']}._id", file=sys.stderr)
             else:
-                print(f"  Checking field: {collection_name}.{field_path} -> {field['references_collection']}.{field['references_field']}")
+                field_result["references"] = f"{field['references_collection']}.{field['references_field']}"
+                print(f"  Checking field: {collection_name}.{field_path} -> {field['references_collection']}.{field['references_field']}", file=sys.stderr)
 
             aggregation_pipeline = generate_aggregation(field)
             result = list(collection.aggregate(aggregation_pipeline))
@@ -156,27 +168,42 @@ def validate_referential_integrity(db, config, target_collection=None):
                 if 'discriminator' in field:
                     for case in field['cases']:
                         case_count = result[0].get(f"count_{case['value']}", 0)
-                        print(f"      {case['value']}: {case_count}")
+                        field_result["cases"][case['value']]["missing_count"] = case_count
+                        print(f"      {case['value']}: {case_count}", file=sys.stderr)
                     unknown_count = result[0].get('count_unknown', 0)
+                    field_result["unknown_count"] = unknown_count
                     if unknown_count > 0:
-                        print(f"      unknown: {unknown_count}")
-                print(
-                    f"    Found {count} dereferenced documents in field '{field_path}' of collection '{collection_name}'")
+                        print(f"      unknown: {unknown_count}", file=sys.stderr)
+                field_result["total_missing"] = count
+                print(f"    Found {count} dereferenced documents in field '{field_path}' of collection '{collection_name}'", file=sys.stderr)
             else:
-                print(
-                    f"    No dereferenced documents found in field '{field_path}' of collection '{collection_name}'.")
+                if 'discriminator' in field:
+                    for case in field['cases']:
+                        field_result["cases"][case['value']]["missing_count"] = 0
+                    field_result["unknown_count"] = 0
+                field_result["total_missing"] = 0
+                print(f"    No dereferenced documents found in field '{field_path}' of collection '{collection_name}'.", file=sys.stderr)
+
+            results[collection_name]["fields"][field_path] = field_result
+
+    return results
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3 or len(sys.argv) > 4:
-        print("Usage: python validate_references.py <mongo_url> <config_file> [<collection_name>]")
-        sys.exit(1)
+    import argparse
 
-    mongo_url = sys.argv[1]
-    config_file = sys.argv[2]
-    target_collection = sys.argv[3] if len(sys.argv) == 4 else None
+    parser = argparse.ArgumentParser(description='Validate referential integrity in MongoDB')
+    parser.add_argument('mongo_url', help='MongoDB connection URL')
+    parser.add_argument('config_file', help='Path to YAML config file')
+    parser.add_argument('collection', nargs='?', default=None, help='Optional: specific collection to check')
+    parser.add_argument('--json', action='store_true', help='Output results as JSON at the end')
 
-    config = load_config(config_file)
-    client = get_db_connection(mongo_url)
+    args = parser.parse_args()
+
+    config = load_config(args.config_file)
+    client = get_db_connection(args.mongo_url)
     db = client.get_database()
 
-    validate_referential_integrity(db, config, target_collection)
+    results = validate_referential_integrity(db, config, args.collection)
+
+    if args.json:
+        print(json.dumps(results, indent=2))
