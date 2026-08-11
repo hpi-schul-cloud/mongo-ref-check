@@ -8,6 +8,7 @@ relations:
         references_collection: systems
         references_field: _id
         optional: true
+        preload_ids: true
   - collection: board
     fields:
       - field: courseId
@@ -56,12 +57,14 @@ relations:
         references_collection: years
         references_field: _id
         optional: true
+        preload_ids: true
 
   - collection: consentversions
     fields:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: consentDataId
         references_collection: base64files
         references_field: _id
@@ -87,6 +90,7 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: courseId
         references_collection: courses
         references_field: _id
@@ -98,6 +102,7 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: substitutionIds
         references_collection: users
         references_field: _id
@@ -136,6 +141,7 @@ relations:
       - field: toolId
         references_collection: external-tools
         references_field: _id
+        preload_ids: true
 
   - collection: "filerecords"
     fields:
@@ -175,6 +181,7 @@ relations:
       - field: organization
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: users
         is_array: true
         sub_field: user
@@ -191,6 +198,7 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: "parent"
         discriminator: "parentType"
         cases:
@@ -206,6 +214,7 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: teacherId
         references_collection: users
         references_field: _id
@@ -221,9 +230,11 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: system
         references_collection: systems
         references_field: _id
+        preload_ids: true
   - collection: lessons
     fields:
       - field: courseId
@@ -249,11 +260,13 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: target
         discriminator: targetModel
         cases:
           - value: schools
             references_collection: schools
+            preload_ids: true
           - value: teams
             references_collection: teams
 
@@ -265,6 +278,7 @@ relations:
       - field: system
         references_collection: systems
         references_field: _id
+        preload_ids: true
 
   - collection: passwordrecoveries
     fields:
@@ -312,6 +326,7 @@ relations:
         references_collection: schools
         references_field: _id
         is_stupid_string: true
+        preload_ids: true
       - field: roomId
         references_collection: rooms
         references_field: _id
@@ -329,6 +344,7 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
 
 
   - collection: roomarrangements
@@ -356,12 +372,14 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
 
   - collection: school-external-tools
     fields:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: tool
         references_collection: external-tools
         references_field: _id
@@ -371,6 +389,7 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: mediaSource
         references_collection: media-sources
         references_field: _id
@@ -380,26 +399,32 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: system
         references_collection: systems
         references_field: _id
+        preload_ids: true
   - collection: schools
     fields:
       - field: systems
         references_collection: systems
         references_field: _id
         is_array: true
+        preload_ids: true
       - field: federalState
         references_collection: federalstates
         references_field: _id
+        preload_ids: true
       - field: currentYear
         references_collection: years
         references_field: _id
         optional: true
+        preload_ids: true
       - field: storageProvider
         references_collection: storageproviders
         references_field: _id
         optional: true
+        preload_ids: true
   - collection: sharetokens
     fields:
       - field: parent
@@ -421,6 +446,7 @@ relations:
         references_collection: schools
         references_field: _id
         optional: true
+        preload_ids: true
   - collection: storageproviders
     fields:
       - field: _id
@@ -431,6 +457,7 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: studentId
         references_collection: users
         references_field: _id
@@ -448,10 +475,12 @@ relations:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: schoolIds
         references_collection: schools
         references_field: _id
         is_array: true
+        preload_ids: true
 
   - collection: user-licenses
     fields:
@@ -464,16 +493,19 @@ relations:
       - field: school
         references_collection: schools
         references_field: _id
+        preload_ids: true
 
   - collection: users
     fields:
       - field: schoolId
         references_collection: schools
         references_field: _id
+        preload_ids: true
       - field: roles
         references_collection: roles
         references_field: _id
         is_array: true
+        preload_ids: true
       - field: _id
         references_collection: accounts
         references_field: userId
