@@ -14,3 +14,5 @@ team.userids
 groups.items
 
 videoconferences.target not an object id ...
+
+courses.groupIds
